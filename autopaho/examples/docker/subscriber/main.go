@@ -31,15 +31,6 @@ func main() {
 		ConnectRetryDelay: cfg.connectRetryDelay,
 		OnConnectionUp: func(cm *autopaho.ConnectionManager, connAck *paho.Connack) {
 			fmt.Println("mqtt connection up")
-			if _, err := cm.Subscribe(context.Background(), &paho.Subscribe{
-				Subscriptions: map[string]paho.SubscribeOptions{
-					cfg.topic: {QoS: cfg.qos},
-				},
-			}); err != nil {
-				fmt.Printf("failed to subscribe (%s). This is likely to mean no messages will be received.", err)
-				return
-			}
-			fmt.Println("mqtt subscription made")
 		},
 		OnConnectError: func(err error) { fmt.Printf("error whilst attempting connection: %s\n", err) },
 		ClientConfig: paho.ClientConfig{
@@ -72,6 +63,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	err = cm.AwaitConnection(ctx)
+	if err != nil { // Should only happen when context is cancelled
+		panic(err)
+	}
+
+	if _, err := cm.Subscribe(context.Background(), &paho.Subscribe{
+		Subscriptions: map[string]paho.SubscribeOptions{
+			cfg.topic: {QoS: cfg.qos},
+		},
+	}); err != nil {
+		fmt.Printf("failed to subscribe (%s). This is likely to mean no messages will be received.", err)
+		return
+	}
+	fmt.Println("mqtt subscription made")
+
 
 	// Messages will be handled through the callback so we really just need to wait until a shutdown
 	// is requested

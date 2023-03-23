@@ -80,6 +80,7 @@ type ConnectionManager struct {
 	cancelCtx context.CancelFunc // Calling this will shut things down cleanly
 
 	done chan struct{} // Channel that will be closed when the process has cleanly shutdown
+	subscriptions map[string]paho.Subscribe // List of subscriptions so we can resubscribe on reconnect
 }
 
 // ResetUsernamePassword clears any configured username and password on the client configuration
@@ -184,6 +185,7 @@ func NewConnection(ctx context.Context, cfg ClientConfig) (*ConnectionManager, e
 		connUp:    make(chan struct{}),
 		cancelCtx: cancel,
 		done:      make(chan struct{}),
+		subscriptions: make(map[string]paho.Subscriptions
 	}
 	errChan := make(chan error)
 
@@ -217,15 +219,19 @@ func NewConnection(ctx context.Context, cfg ClientConfig) (*ConnectionManager, e
 				cli.SetDebugLogger(cfg.PahoDebug)
 			}
 
-			if cfg.PahoErrors != nil {
-				cli.SetErrorLogger(cfg.PahoErrors)
-			}
-
 			if cfg.OnConnectionUp != nil {
 				cfg.OnConnectionUp(&c, connAck)
 			}
 
 			var err error
+
+			for _, value := range c.subscriptions {
+				_, err = c.cli.Subscribe(innerCtx, &value)
+				if err != nil {
+					cfg.Debug.Printf("subcribe returned error: %s\n", err)
+				}
+			}
+
 			select {
 			case err = <-errChan: // Message on error channel indicates connection has (or will) drop.
 			case <-innerCtx.Done():
@@ -294,10 +300,16 @@ func (c *ConnectionManager) AwaitConnection(ctx context.Context) error {
 func (c *ConnectionManager) Subscribe(ctx context.Context, s *paho.Subscribe) (*paho.Suback, error) {
 	c.mu.Lock()
 	cli := c.cli
+	for key, value := range s.Subscriptions {
+		c.subscriptions[key] = paho.Subscribe{
+			Properties: s.Properties,
+			Subscriptions: map[string]paho.SubscribeOptions{ key: value },
+		}
+	}
 	c.mu.Unlock()
 
 	if cli == nil {
-		return nil, ConnectionDownError
+		return nil, nil
 	}
 	return cli.Subscribe(ctx, s)
 }
@@ -309,10 +321,13 @@ func (c *ConnectionManager) Subscribe(ctx context.Context, s *paho.Subscribe) (*
 func (c *ConnectionManager) Unsubscribe(ctx context.Context, u *paho.Unsubscribe) (*paho.Unsuback, error) {
 	c.mu.Lock()
 	cli := c.cli
+	for _, topic := range u.Topics {
+		delete(c.subscriptions, topic)
+	}
 	c.mu.Unlock()
 
 	if cli == nil {
-		return nil, ConnectionDownError
+		return nil, nil
 	}
 	return cli.Unsubscribe(ctx, u)
 }
