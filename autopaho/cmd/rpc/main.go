@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -123,6 +124,27 @@ func main() {
 
 	listener(cfg.topic)
 
+	responseTopic := cliCfg.ClientID + "/responses"
+	responseHandlerRegistered := false
+
+	cliCfg.OnConnectionUp = func (cm *autopaho.ConnectionManager, connAck *paho.Connack) {
+		fmt.Println("mqtt connection up")
+
+		if responseHandlerRegistered {
+			ctx, _ := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
+			if _, err := cm.Subscribe(ctx, &paho.Subscribe{
+				Subscriptions: map[string]paho.SubscribeOptions{
+					responseTopic: {QoS: 1},
+				},
+			}); err != nil {
+				fmt.Printf("failed to subscribe (%s). This is likely to mean no messages will be received.", err)
+				return
+			}
+		}
+
+		fmt.Println("mqtt subscription made")
+	}
+
 	//
 	// Connect to the broker
 	//
@@ -137,11 +159,20 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	h, err := rpc.NewHandler(ctx, rpc.HandlerOpts{
-		Conn:             cm,
-		Router:           cliCfg.Router,
-		ResponseTopicFmt: "%s/responses",
-		ClientID:         cliCfg.ClientID,
+		Conn:          cm,
+		ResponseTopic: responseTopic,
 	})
+	cliCfg.Router.RegisterHandler(responseTopic, h.ResponseHandler)
+	responseHandlerRegistered = true
+	subCtx, subCtxCancel := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
+	defer subCtxCancel()
+	if _, err := cm.Subscribe(subCtx, &paho.Subscribe{
+		Subscriptions: map[string]paho.SubscribeOptions{
+			responseTopic: {QoS: 1},
+		},
+	}); err != nil {
+		panic(fmt.Sprintf("failed to subscribe (%s). This is likely to mean no messages will be received.", err))
+	}
 
 	if err != nil {
 		log.Fatal(err)

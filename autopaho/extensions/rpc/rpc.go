@@ -21,20 +21,15 @@ type Handler struct {
 
 type HandlerOpts struct {
 	Conn             *autopaho.ConnectionManager
-	Router           paho.Router
-	ResponseTopicFmt string
-	ClientID         string
+	ResponseTopic     string
 }
 
 func NewHandler(ctx context.Context, opts HandlerOpts) (*Handler, error) {
 	h := &Handler{
-		cm:         opts.Conn,
-		correlData: make(map[string]chan *paho.Publish),
+		cm:            opts.Conn,
+		correlData:    make(map[string]chan *paho.Publish),
+		responseTopic: opts.ResponseTopic,
 	}
-
-	h.responseTopic = fmt.Sprintf(opts.ResponseTopicFmt, opts.ClientID)
-
-	opts.Router.RegisterHandler(h.responseTopic, h.responseHandler)
 
 	_, err := opts.Conn.Subscribe(ctx, &paho.Subscribe{
 		Subscriptions: map[string]paho.SubscribeOptions{
@@ -92,7 +87,7 @@ func (h *Handler) Request(ctx context.Context, pb *paho.Publish) (resp *paho.Pub
 	}
 }
 
-func (h *Handler) responseHandler(pb *paho.Publish) {
+func (h *Handler) ResponseHandler(pb *paho.Publish) {
 	if pb.Properties == nil || pb.Properties.CorrelationData == nil {
 		return
 	}
