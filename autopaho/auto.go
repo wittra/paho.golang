@@ -43,6 +43,7 @@ type ClientConfig struct {
 	ConnectRetryDelay time.Duration    // How long to wait between connection attempts (defaults to 10s)
 	ConnectTimeout    time.Duration    // How long to wait for the connection process to complete (defaults to 10s)
 	WebSocketCfg      *WebSocketConfig // Enables customisation of the websocket connection
+	CleanStart        bool             // Whether to connect with the CleanStart flag or not
 
 	OnConnectionUp func(*ConnectionManager, *paho.Connack) // Called (within a goroutine) when a connection is made (including reconnection). Connection Manager passed to simplify subscriptions.
 	OnConnectError func(error)                             // Called (within a goroutine) whenever a connection attempt fails
@@ -123,7 +124,7 @@ func (cfg *ClientConfig) buildConnectPacket() *paho.Connect {
 	cp := &paho.Connect{
 		KeepAlive:  cfg.KeepAlive,
 		ClientID:   cfg.ClientID,
-		CleanStart: true, // while persistence is not supported we should probably start clean...
+		CleanStart: cfg.CleanStart,
 	}
 
 	if len(cfg.connectUsername) > 0 {
