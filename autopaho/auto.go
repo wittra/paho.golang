@@ -44,6 +44,7 @@ type ClientConfig struct {
 	ConnectRetryDelay time.Duration    // How long to wait between connection attempts (defaults to 10s)
 	ConnectTimeout    time.Duration    // How long to wait for the connection process to complete (defaults to 10s)
 	WebSocketCfg      *WebSocketConfig // Enables customisation of the websocket connection
+	CleanStart        bool             // Whether to connect with the CleanStart flag or not
 
 	// AttemptConnection, if provided, will be called to establish a network connection.
 	// The returned `conn` must support thread safe writing; most wrapped net.Conn implementations like tls.Conn
@@ -130,7 +131,7 @@ func (cfg *ClientConfig) buildConnectPacket() *paho.Connect {
 	cp := &paho.Connect{
 		KeepAlive:  cfg.KeepAlive,
 		ClientID:   cfg.ClientID,
-		CleanStart: true, // while persistence is not supported we should probably start clean...
+		CleanStart: cfg.CleanStart,
 	}
 
 	if len(cfg.connectUsername) > 0 {
